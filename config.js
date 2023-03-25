@@ -5,4 +5,5 @@ module.exports = {
 	generatedDirectory: '__generated__',
 	globalImports: [],
 	rootNamespace: null,
+	addToTickLoad: true
 }

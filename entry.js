@@ -183,10 +183,10 @@ function includeFileList(list, file) {
 					const [, name, , ...rest] = str.replace('.mcfunction', '').split(/\/|\\/)
 					return `${name}:${rest.join('/')}`
 				}
-				if (item.endsWith('tick.mcfunction')) {
+				if (CONFIG.addToTickLoad && item.endsWith('tick.mcfunction')) {
 					tickFunction.set(file, toFunction(item))
 				}
-				if (item.endsWith('load.mcfunction')) {
+				if (CONFIG.addToTickLoad && item.endsWith('load.mcfunction')) {
 					loadFunction.set(file, toFunction(item))
 				}
 			}
@@ -437,8 +437,8 @@ consumer.EntryOp = list({
 							file,
 						},
 						emit: (command, target = 'load') => {
-							if (target === 'load') LoadFunction.addCommand(String(command))
-							if (target === 'tick') TickFunction.addCommand(String(command))
+							if (CONFIG.addToTickLoad && target === 'load') LoadFunction.addCommand(String(command))
+							if (CONFIG.addToTickLoad && target === 'tick') TickFunction.addCommand(String(command))
 						},
 						load(fp, mode) {
 							return fs.readFileSync(path.resolve(path.parse(file).dir, fp), mode || 'utf8')
@@ -502,7 +502,7 @@ consumer.Generic = list({
 	getToken: list => list[0],
 	actions: [
 		{
-			match: ({ token }) => token === 'load',
+			match: ({ token }) => CONFIG.addToTickLoad && token === 'load',
 			exec(file, tokens) {
 				tokens.shift()
 				const contents = consumer.Block(file, tokens, 'load', { dummy: true }, null, null)
@@ -512,7 +512,7 @@ consumer.Generic = list({
 			},
 		},
 		{
-			match: ({ token }) => token === 'tick',
+			match: ({ token }) => CONFIG.addToTickLoad && token === 'tick',
 			exec(file, tokens) {
 				tokens.shift()
 				const contents = consumer.Block(file, tokens, 'tick', { dummy: true }, null, null)
@@ -545,8 +545,8 @@ consumer.Generic = list({
 							func,
 						},
 						emit: (command, target = 'this') => {
-							if (target === 'load' || target === true) LoadFunction.addCommand(String(command))
-							if (target === 'tick') TickFunction.addCommand(String(command))
+							if (CONFIG.addToTickLoad && target === 'load' || target === true) LoadFunction.addCommand(String(command))
+							if (CONFIG.addToTickLoad && target === 'tick') TickFunction.addCommand(String(command))
 							if (target === 'this') func.addCommand(String(command))
 						},
 						load(fp, mode) {
@@ -1184,8 +1184,8 @@ function copy_token(_, args) {
 	t.dependencies = _.dependencies
 	return t
 }
-const TickTag = new io.MultiFileTag(path.resolve(process.cwd(), './data/minecraft/tags/functions/tick.json'))
-const LoadTag = new io.MultiFileTag(path.resolve(process.cwd(), './data/minecraft/tags/functions/load.json'))
+const TickTag = CONFIG.addToTickLoad ? new io.MultiFileTag(path.resolve(process.cwd(), './data/minecraft/tags/functions/tick.json')) : null
+const LoadTag = CONFIG.addToTickLoad ? new io.MultiFileTag(path.resolve(process.cwd(), './data/minecraft/tags/functions/load.json')) : null
 function MC_LANG_HANDLER(file) {
 	MC_LANG_EVENTS.emit('start', {
 		file,
@@ -1209,26 +1209,29 @@ function MC_LANG_HANDLER(file) {
 	if (CONFIG.defaultNamespace) {
 		namespaceStack.unshift(CONFIG.defaultNamespace)
 	}
-	LoadFunction = new MCFunction(null, null, 'load')
-	LoadFunction.namespace = namespaceStack[0]
-	LoadFunction.setPath(
-		namespaceStack
-			.slice(1)
-			.concat(CONFIG.generatedDirectory + '/load')
-			.join('/')
-	)
-	TickFunction = new MCFunction(null, null, 'tick')
-	TickFunction.namespace = namespaceStack[0]
-	TickFunction.setPath(
-		namespaceStack
-			.slice(1)
-			.concat(CONFIG.generatedDirectory + '/tick')
-			.join('/')
-	)
-	loadFunction.reset(file)
-	tickFunction.reset(file)
-	LoadTag.reset(file)
-	TickTag.reset(file)
+	if (CONFIG.addToTickLoad) {
+		LoadFunction = new MCFunction(null, null, 'load')
+		LoadFunction.namespace = namespaceStack[0]
+		LoadFunction.setPath(
+			namespaceStack
+				.slice(1)
+				.concat(CONFIG.generatedDirectory + '/load')
+				.join('/')
+		)
+		console.log(`ns: ${LoadFunction.namespace} path: ${LoadFunction.getPath()}`)
+		TickFunction = new MCFunction(null, null, 'tick')
+		TickFunction.namespace = namespaceStack[0]
+		TickFunction.setPath(
+			namespaceStack
+				.slice(1)
+				.concat(CONFIG.generatedDirectory + '/tick')
+				.join('/')
+		)
+		loadFunction.reset(file)
+		tickFunction.reset(file)
+		LoadTag.reset(file)
+		TickTag.reset(file)
+	}
 	MacroStorage = {}
 	if (fs.existsSync(file)) {
 		env = { config: CONFIG, file_path: file }
@@ -1237,20 +1240,22 @@ function MC_LANG_HANDLER(file) {
 		id = {}
 		try {
 			consumer.Entry(file, tokenize(fs.readFileSync(file, 'utf8')))
-			if (LoadFunction.functions.length > 0) {
-				LoadFunction.functions = Array.from(new Set(LoadFunction.functions).keys())
-				LoadFunction.confirm(file)
-			}
-			if (TickFunction.functions.length > 0) {
-				TickFunction.confirm(file)
-			}
-			const loadContent = loadFunction.valuesFor(file)
-			if (loadContent.length > 0) {
-				LoadTag.set(file, loadContent)
-			}
-			const tickValues = tickFunction.valuesFor(file)
-			if (tickValues.length > 0) {
-				TickTag.set(file, tickValues)
+			if(CONFIG.addToTickLoad) {
+				if (LoadFunction.functions.length > 0) {
+					LoadFunction.functions = Array.from(new Set(LoadFunction.functions).keys())
+					LoadFunction.confirm(file)
+				}
+				if (TickFunction.functions.length > 0) {
+					TickFunction.confirm(file)
+				}
+				const loadContent = loadFunction.valuesFor(file)
+				if (loadContent.length > 0) {
+					LoadTag.set(file, loadContent)
+				}
+				const tickValues = tickFunction.valuesFor(file)
+				if (tickValues.length > 0) {
+					TickTag.set(file, tickValues)
+				}
 			}
 			MC_LANG_EVENTS.emit('end', {
 				file,
